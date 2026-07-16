@@ -81,10 +81,9 @@
   .scenario-node:hover { transform: translate(-50%, -50%) scale(1.15); }
   .scenario-node.draft { cursor: grab; background: #c99a86; }
   .scenario-node.draft:active { cursor: grabbing; }
-  .scenario-labels { display: flex; position: relative; height: 30px; margin-top: 4px; }
-  .scenario-label-tag {
-    position: absolute; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace;
-    font-size: 9px; color: #a8a49b; white-space: nowrap; text-align: center; top: 4px;
+  .scenario-hint {
+    margin-top: 8px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    letter-spacing: .14em; text-transform: uppercase; color: #6d787d;
   }
   .scenario-draft-row {
     display: flex; gap: 8px; align-items: center; margin-top: 10px; padding: 8px 10px;
@@ -211,6 +210,17 @@
   </div>
 </div>
 
+<div id="node-modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-label">Option</div>
+    <h2 id="node-modal-name"></h2>
+    <div class="modal-actions">
+      <a id="node-modal-link" href="#" target="_blank" rel="noopener" class="modal-unlock" style="text-decoration:none; text-align:center;">View item ↗</a>
+      <button id="node-modal-close" class="modal-cancel">Close</button>
+    </div>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
@@ -240,6 +250,9 @@
   const passError = el('pass-error');
   const draftTrack = el('draft-track');
   const draftRows = el('draft-rows');
+  const nodeModalOverlay = el('node-modal-overlay');
+  const nodeModalName = el('node-modal-name');
+  const nodeModalLink = el('node-modal-link');
 
   function getStoredPassword() {
     try { return localStorage.getItem(ADMIN_KEY) || ''; } catch (e) { return ''; }
@@ -259,9 +272,9 @@
       const marker = document.createElement('div');
       marker.className = 'scenario-node' + (draft ? ' draft' : '');
       marker.style.left = node.position + '%';
-      marker.title = node.name || (draft ? 'Drag to position' : '');
-      if (!draft && node.link) {
-        marker.addEventListener('click', () => window.open(node.link, '_blank', 'noopener'));
+      marker.title = draft ? 'Drag to position' : 'Click for details';
+      if (!draft) {
+        marker.addEventListener('click', () => openNodeModal(node));
       }
       if (draft) {
         marker.addEventListener('pointerdown', (e) => {
@@ -317,6 +330,22 @@
       draftRows.appendChild(row);
     });
   }
+
+  function openNodeModal(node) {
+    nodeModalName.textContent = node.name || 'Untitled option';
+    if (node.link) {
+      nodeModalLink.href = node.link;
+      nodeModalLink.classList.remove('hidden');
+    } else {
+      nodeModalLink.classList.add('hidden');
+    }
+    nodeModalOverlay.classList.remove('hidden');
+  }
+  function closeNodeModal() {
+    nodeModalOverlay.classList.add('hidden');
+  }
+  el('node-modal-close').addEventListener('click', closeNodeModal);
+  nodeModalOverlay.addEventListener('click', (e) => { if (e.target === nodeModalOverlay) closeNodeModal(); });
 
   el('add-node-btn').addEventListener('click', () => {
     draftNodes.push({ name: '', link: '', position: draftNodes.length === 0 ? 50 : Math.min(100, draftNodes.length * 25) });
@@ -440,17 +469,10 @@
         slider.appendChild(track);
         renderSliderNodes(track, item.nodes, { draft: false });
 
-        const labels = document.createElement('div');
-        labels.className = 'scenario-labels';
-        item.nodes.forEach(node => {
-          if (!node.name) return;
-          const tag = document.createElement('span');
-          tag.className = 'scenario-label-tag';
-          tag.style.left = node.position + '%';
-          tag.textContent = node.name;
-          labels.appendChild(tag);
-        });
-        slider.appendChild(labels);
+        const hint = document.createElement('div');
+        hint.className = 'scenario-hint';
+        hint.textContent = 'tap a dot for details';
+        slider.appendChild(hint);
 
         li.appendChild(slider);
       }
