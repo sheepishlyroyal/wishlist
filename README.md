@@ -1,59 +1,44 @@
 # Wishlist
 
-Static site on GitHub Pages. No backend at all — sync is done entirely through a
-public Google Form + its linked Google Sheet, used as an append-only event log.
+Static site on GitHub Pages, synced through Firebase Firestore (project `wishlist-sync-1365`).
+No server of any kind — the page talks to Firestore directly over its client SDK, in
+real time (every open tab updates instantly when the data changes anywhere else).
 
-Every add/remove is one Form submission (`action`, `item id`, `name`, `note`, `link`).
-The page reads the whole log via the Sheet's public JSON feed and replays it
-(`add` inserts, `remove` deletes by id) to get the current list. No API key, no
-service account, no server, nothing that can expire or get auto-revoked.
+Firestore rules are wide open (`allow read, write: if true`) — anyone with the site
+URL can read or write the `items` collection directly. That's intentional: this isn't
+meant to be a secure app, just a convenient shared list. The admin password gate on
+the page is a client-side-only UI convenience (persisted in `localStorage`), not real
+access control.
 
-## Setup (one-time, ~5 min)
+## What's in `config.js`
 
-1. Go to **forms.google.com** → create a blank form (name doesn't matter, e.g. "Wishlist Sync").
-2. Add 5 **Short answer** questions, in this exact order, none marked required:
-   `Action`, `Item ID`, `Name`, `Note`, `Link`.
-3. Settings (gear icon) → Responses → make sure **"Restrict to users in your
-   organization"** and **"Collect email addresses"** are both **off**, so anonymous
-   visitors can submit.
-4. Responses tab → click the green Sheets icon → **Create a new spreadsheet**.
-5. Top-right ⋮ menu → **Get pre-filled link**. Type a distinct dummy value into each
-   field (e.g. `ACTIONVAL`, `IDVAL`, `NAMEVAL`, `NOTEVAL`, `LINKVAL`) → **Get link** →
-   copy it. It looks like:
-   ```
-   https://docs.google.com/forms/d/e/1FAIpQLSc.../viewform?usp=pp_url&entry.111=ACTIONVAL&entry.222=IDVAL&entry.333=NAMEVAL&entry.444=NOTEVAL&entry.555=LINKVAL
-   ```
-   - The `FORM_ID` is the string between `/d/e/` and `/viewform`.
-   - Match each `entry.NNNNN=` number to the dummy value next to it — that tells you
-     which entry ID belongs to which field.
-6. Open the linked spreadsheet → **Share** → change general access to
-   **"Anyone with the link" → Viewer**.
-   - The `SHEET_ID` is the string between `/d/` and `/edit` in the sheet's URL.
-   - Note the response tab's name (bottom tab, usually `Form Responses 1`).
-7. Fill all of that into `config.js`:
-   ```js
-   window.WISHLIST_CONFIG = {
-     FORM_ID: "1FAIpQLSc...",
-     ENTRY_ACTION: "111",
-     ENTRY_ITEM_ID: "222",
-     ENTRY_NAME: "333",
-     ENTRY_NOTE: "444",
-     ENTRY_LINK: "555",
-     SHEET_ID: "your-sheet-id",
-     SHEET_TAB: "Form Responses 1",
-     ADMIN_PASSWORD: "cam1",
-   };
-   ```
-8. Commit and push — GitHub Pages redeploys automatically.
+The Firebase Web SDK config (`apiKey`, `projectId`, etc.) is not a secret — Firebase
+access control is enforced by the Firestore rules above, not by hiding these values.
+Safe to have in a public repo as-is.
 
-## Notes
+## Data model
 
-- `ADMIN_PASSWORD` is checked entirely client-side (visible in the public source) —
-  it's just a friction gate, not real access control, per the "doesn't need to be
-  secure" call.
-- Admin login persists in `localStorage`, so you won't be re-prompted on future visits
-  in the same browser.
-- The event log only grows (Sheet rows are never edited/deleted by the site), so a
-  long-lived wishlist with lots of churn will accumulate rows — harmless, just
-  slightly more to fetch/replay over time.
-- Live at: https://sheepishlyroyal.github.io/wishlist/
+Each wishlist item is a Firestore document in the `items` collection:
+
+```
+{ name, note, link, nodes: [{ name, link, position }], createdAtMs, createdAt }
+```
+
+`nodes` power the "best case scenario ↔ still really good scenario" slider — each
+node is an alternative option (name + optional link) placed at `position` (0–100)
+along that spectrum. Admin can add as many as they want and drag them into place;
+they render as clickable markers on the public page too.
+
+## Managing the Firebase project
+
+- Console: https://console.firebase.google.com/project/wishlist-sync-1365/overview
+- Firestore data: https://console.firebase.google.com/project/wishlist-sync-1365/firestore/databases/-default-/data
+- To tighten the rules later, edit `firestore.rules` in a `firebase init firestore`
+  directory pointed at this project and `firebase deploy --only firestore:rules`.
+
+## Hosting
+
+GitHub Pages, deployed from the `main` branch root. Live at:
+https://sheepishlyroyal.github.io/wishlist/
+
+Any push to `main` redeploys automatically (may take a minute to show up).

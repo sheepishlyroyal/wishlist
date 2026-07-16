@@ -60,6 +60,53 @@
     width: 30px; height: 30px; cursor: pointer; line-height: 1; transition: all .2s;
   }
   .item-remove:hover { color: #f5f1ea; border-color: #673c4f; background: rgba(103,60,79,.4); }
+
+  /* Best-case <-> still-good-scenario slider */
+  .scenario-slider { width: 100%; max-width: 420px; margin-top: 14px; }
+  .scenario-ends {
+    display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 9px;
+    letter-spacing: .16em; text-transform: uppercase; color: #77848a; margin-bottom: 10px;
+  }
+  .scenario-ends span:last-child { color: #8a95a0; }
+  .scenario-track {
+    position: relative; height: 4px; border-radius: 999px; background: rgba(156,153,144,.2);
+    background-image: linear-gradient(90deg, #d97757, #7fa39c); background-size: 100% 100%;
+    opacity: .85; margin: 0 9px;
+  }
+  .scenario-node {
+    position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%;
+    background: #f5f1ea; border: 2px solid #221d28; transform: translate(-50%, -50%);
+    cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.35); transition: transform .15s;
+  }
+  .scenario-node:hover { transform: translate(-50%, -50%) scale(1.15); }
+  .scenario-node.draft { cursor: grab; background: #c99a86; }
+  .scenario-node.draft:active { cursor: grabbing; }
+  .scenario-labels { display: flex; position: relative; height: 30px; margin-top: 4px; }
+  .scenario-label-tag {
+    position: absolute; transform: translateX(-50%); font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: #a8a49b; white-space: nowrap; text-align: center; top: 4px;
+  }
+  .scenario-draft-row {
+    display: flex; gap: 8px; align-items: center; margin-top: 10px; padding: 8px 10px;
+    background: rgba(245,241,234,.03); border: 1px solid rgba(156,153,144,.16); border-radius: 10px;
+  }
+  .scenario-draft-row input {
+    font-family: 'Inter Tight', sans-serif; font-size: 13px; color: #f5f1ea; background: rgba(245,241,234,.05);
+    border: 1px solid rgba(156,153,144,.22); border-radius: 8px; padding: 8px 10px; outline: none; flex: 1; min-width: 0;
+  }
+  .scenario-draft-row input:focus { border-color: rgba(201,154,134,.6); }
+  .scenario-draft-remove {
+    flex-shrink: 0; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #9c9990; background: transparent;
+    border: 1px solid rgba(156,153,144,.28); border-radius: 999px; width: 26px; height: 26px; cursor: pointer;
+  }
+  .scenario-draft-remove:hover { color: #f5f1ea; border-color: #673c4f; background: rgba(103,60,79,.4); }
+  .scenario-add-node {
+    margin-top: 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+    color: #9c9990; background: transparent; border: 1px dashed rgba(156,153,144,.34); border-radius: 999px;
+    padding: 8px 16px; cursor: pointer; transition: all .2s;
+  }
+  .scenario-add-node:hover { color: #f5f1ea; border-color: rgba(156,153,144,.6); }
+
   .add-section { margin-top: 20px; border-top: 1px solid rgba(156,153,144,.16); padding-top: 40px; }
   .add-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: #9c9990; margin-bottom: 22px; }
   .add-form { display: flex; flex-direction: column; gap: 14px; }
@@ -131,6 +178,17 @@
       <input id="f-name" placeholder="What do you want?">
       <input id="f-note" placeholder="Short note / why (optional)">
       <input id="f-link" placeholder="Link to buy (optional)">
+
+      <div class="scenario-slider">
+        <div class="scenario-ends">
+          <span>Best case scenario</span>
+          <span>Still really good scenario</span>
+        </div>
+        <div id="draft-track" class="scenario-track"></div>
+        <div id="draft-rows"></div>
+        <button id="add-node-btn" type="button" class="scenario-add-node">+ Add option</button>
+      </div>
+
       <button id="add-btn" class="add-btn">Add to list</button>
     </div>
   </div>
@@ -154,15 +212,21 @@
 </div>
 
 <script src="config.js"></script>
-<script>
-(function () {
-  const CFG = window.WISHLIST_CONFIG;
-  const ADMIN_KEY = 'wl_admin_pw';
-  const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${CFG.SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(CFG.SHEET_TAB)}`;
-  const FORM_URL = `https://docs.google.com/forms/d/e/${CFG.FORM_ID}/formResponse`;
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, serverTimestamp,
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+  const app = initializeApp(window.WISHLIST_FIREBASE_CONFIG);
+  const db = getFirestore(app);
+  const itemsCol = collection(db, "items");
+  const ADMIN_KEY = "wl_admin_pw";
+  const ADMIN_PASSWORD = window.WISHLIST_ADMIN_PASSWORD;
 
   let items = [];
   let isAdmin = false;
+  let draftNodes = []; // [{ id, name, link, position }] while composing a new item
 
   const el = (id) => document.getElementById(id);
   const itemsList = el('items-list');
@@ -174,6 +238,8 @@
   const modalOverlay = el('modal-overlay');
   const passInput = el('f-pass');
   const passError = el('pass-error');
+  const draftTrack = el('draft-track');
+  const draftRows = el('draft-rows');
 
   function getStoredPassword() {
     try { return localStorage.getItem(ADMIN_KEY) || ''; } catch (e) { return ''; }
@@ -185,43 +251,149 @@
     try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
   }
 
-  // Reads: the Form's linked Sheet, exposed read-only via its gviz JSON feed
-  // (works once the Sheet is shared "Anyone with the link can view" — no API key).
-  // Writes: POST straight to the Form's response endpoint (no-cors, no auth) —
-  // every add/remove just appends a new event row. Current state = replaying
-  // the whole event log in order. No server of our own anywhere.
-  async function fetchEvents() {
-    const res = await fetch(GVIZ_URL);
-    const text = await res.text();
-    const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
-    const rows = json.table.rows || [];
-    // Column order: Timestamp, Action, Item ID, Name, Note, Link (as added to the Form).
-    return rows.map(r => {
-      const c = r.c;
-      const v = (i) => (c[i] && c[i].v != null) ? String(c[i].v) : '';
-      return { action: v(1), id: v(2), name: v(3), note: v(4), link: v(5) };
+  // --- Scenario slider (shared between draft/add-form and read-only item display) ---
+
+  function renderSliderNodes(trackEl, nodes, { draft }) {
+    trackEl.querySelectorAll('.scenario-node').forEach(n => n.remove());
+    nodes.forEach((node, i) => {
+      const marker = document.createElement('div');
+      marker.className = 'scenario-node' + (draft ? ' draft' : '');
+      marker.style.left = node.position + '%';
+      marker.title = node.name || (draft ? 'Drag to position' : '');
+      if (!draft && node.link) {
+        marker.addEventListener('click', () => window.open(node.link, '_blank', 'noopener'));
+      }
+      if (draft) {
+        marker.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          const trackRect = trackEl.getBoundingClientRect();
+          function onMove(ev) {
+            const x = ev.clientX - trackRect.left;
+            const pct = Math.max(0, Math.min(100, (x / trackRect.width) * 100));
+            draftNodes[i].position = Math.round(pct);
+            marker.style.left = draftNodes[i].position + '%';
+          }
+          function onUp() {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+          }
+          window.addEventListener('pointermove', onMove);
+          window.addEventListener('pointerup', onUp);
+        });
+      }
+      trackEl.appendChild(marker);
     });
   }
 
-  function replay(events) {
-    const state = new Map();
-    for (const e of events) {
-      if (e.action === 'add' && e.id) state.set(e.id, { id: e.id, name: e.name, note: e.note, link: e.link });
-      else if (e.action === 'remove' && e.id) state.delete(e.id);
-    }
-    return [...state.values()];
+  function renderDraftNodes() {
+    renderSliderNodes(draftTrack, draftNodes, { draft: true });
+    draftRows.innerHTML = '';
+    draftNodes.forEach((node, i) => {
+      const row = document.createElement('div');
+      row.className = 'scenario-draft-row';
+
+      const nameInput = document.createElement('input');
+      nameInput.placeholder = 'Option name';
+      nameInput.value = node.name;
+      nameInput.addEventListener('input', (e) => { draftNodes[i].name = e.target.value; });
+
+      const linkInput = document.createElement('input');
+      linkInput.placeholder = 'Link (optional)';
+      linkInput.value = node.link;
+      linkInput.addEventListener('input', (e) => { draftNodes[i].link = e.target.value; });
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'scenario-draft-remove';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', () => {
+        draftNodes.splice(i, 1);
+        renderDraftNodes();
+      });
+
+      row.appendChild(nameInput);
+      row.appendChild(linkInput);
+      row.appendChild(removeBtn);
+      draftRows.appendChild(row);
+    });
   }
 
-  async function submitEvent({ action, id, name = '', note = '', link = '' }) {
-    const body = new URLSearchParams();
-    body.set(`entry.${CFG.ENTRY_ACTION}`, action);
-    body.set(`entry.${CFG.ENTRY_ITEM_ID}`, id);
-    body.set(`entry.${CFG.ENTRY_NAME}`, name);
-    body.set(`entry.${CFG.ENTRY_NOTE}`, note);
-    body.set(`entry.${CFG.ENTRY_LINK}`, link);
-    // no-cors: Google Forms doesn't send CORS headers, so the response is opaque —
-    // this still reliably submits, we just can't read a result back.
-    await fetch(FORM_URL, { method: 'POST', mode: 'no-cors', body });
+  el('add-node-btn').addEventListener('click', () => {
+    draftNodes.push({ name: '', link: '', position: draftNodes.length === 0 ? 50 : Math.min(100, draftNodes.length * 25) });
+    renderDraftNodes();
+  });
+
+  // --- Data sync (Firestore, realtime) ---
+
+  onSnapshot(itemsCol, (snap) => {
+    items = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+    render();
+  }, (err) => console.error('Wishlist sync error:', err));
+
+  async function removeItem(id) {
+    try { await deleteDoc(doc(db, 'items', id)); }
+    catch (e) { console.error('Failed to remove item:', e); }
+  }
+
+  async function addItem() {
+    const name = el('f-name').value.trim();
+    if (!name) return;
+    const note = el('f-note').value.trim();
+    let link = el('f-link').value.trim();
+    if (link && !/^https?:\/\//i.test(link)) link = 'https://' + link;
+
+    const nodes = draftNodes
+      .filter(n => n.name.trim() || n.link.trim())
+      .map(n => {
+        let nl = n.link.trim();
+        if (nl && !/^https?:\/\//i.test(nl)) nl = 'https://' + nl;
+        return { name: n.name.trim(), link: nl, position: n.position };
+      });
+
+    try {
+      await addDoc(itemsCol, { name, note, link, nodes, createdAtMs: Date.now(), createdAt: serverTimestamp() });
+      el('f-name').value = ''; el('f-note').value = ''; el('f-link').value = '';
+      draftNodes = [];
+      renderDraftNodes();
+    } catch (e) {
+      console.error('Failed to add item:', e);
+    }
+  }
+
+  function logout() {
+    isAdmin = false;
+    clearStoredPassword();
+    render();
+  }
+
+  function tryAutoLogin() {
+    // Purely a local convenience flag — there's no server to verify against,
+    // so this is UI-only, matching "this site doesn't need to be secure".
+    if (getStoredPassword() === ADMIN_PASSWORD) { isAdmin = true; render(); }
+  }
+
+  function openModal() {
+    passInput.value = '';
+    passError.classList.add('hidden');
+    modalOverlay.classList.remove('hidden');
+    setTimeout(() => passInput.focus(), 0);
+  }
+  function closeModal() {
+    modalOverlay.classList.add('hidden');
+  }
+
+  function submitPassword() {
+    const pw = passInput.value;
+    if (pw === ADMIN_PASSWORD) {
+      isAdmin = true;
+      storePassword(pw);
+      closeModal();
+      render();
+    } else {
+      passError.classList.remove('hidden');
+    }
   }
 
   function render() {
@@ -254,6 +426,35 @@
         li.appendChild(a);
       }
 
+      if (Array.isArray(item.nodes) && item.nodes.length > 0) {
+        const slider = document.createElement('div');
+        slider.className = 'scenario-slider';
+
+        const ends = document.createElement('div');
+        ends.className = 'scenario-ends';
+        ends.innerHTML = '<span>Best case scenario</span><span>Still really good scenario</span>';
+        slider.appendChild(ends);
+
+        const track = document.createElement('div');
+        track.className = 'scenario-track';
+        slider.appendChild(track);
+        renderSliderNodes(track, item.nodes, { draft: false });
+
+        const labels = document.createElement('div');
+        labels.className = 'scenario-labels';
+        item.nodes.forEach(node => {
+          if (!node.name) return;
+          const tag = document.createElement('span');
+          tag.className = 'scenario-label-tag';
+          tag.style.left = node.position + '%';
+          tag.textContent = node.name;
+          labels.appendChild(tag);
+        });
+        slider.appendChild(labels);
+
+        li.appendChild(slider);
+      }
+
       if (isAdmin) {
         const btn = document.createElement('button');
         btn.className = 'item-remove';
@@ -272,71 +473,6 @@
     addSection.classList.toggle('hidden', !isAdmin);
   }
 
-  async function loadItems() {
-    try {
-      const events = await fetchEvents();
-      items = replay(events);
-      render();
-    } catch (e) {
-      console.error('Failed to load wishlist:', e);
-    }
-  }
-
-  function tryAutoLogin() {
-    // Purely a local convenience flag — there's no server to verify against,
-    // so this is UI-only, matching "this site doesn't need to be secure".
-    if (getStoredPassword() === CFG.ADMIN_PASSWORD) { isAdmin = true; render(); }
-  }
-
-  async function removeItem(id) {
-    // Optimistic: drop it locally right away, then log the removal event.
-    items = items.filter(x => x.id !== id);
-    render();
-    await submitEvent({ action: 'remove', id });
-    loadItems(); // reconcile with the log in case of concurrent edits
-  }
-
-  async function addItem() {
-    const name = el('f-name').value.trim();
-    if (!name) return;
-    const note = el('f-note').value.trim();
-    const link = el('f-link').value.trim();
-    const id = String(Date.now());
-    items = [...items, { id, name, note, link }];
-    el('f-name').value = ''; el('f-note').value = ''; el('f-link').value = '';
-    render();
-    await submitEvent({ action: 'add', id, name, note, link });
-    loadItems();
-  }
-
-  function logout() {
-    isAdmin = false;
-    clearStoredPassword();
-    render();
-  }
-
-  function openModal() {
-    passInput.value = '';
-    passError.classList.add('hidden');
-    modalOverlay.classList.remove('hidden');
-    setTimeout(() => passInput.focus(), 0);
-  }
-  function closeModal() {
-    modalOverlay.classList.add('hidden');
-  }
-
-  function submitPassword() {
-    const pw = passInput.value;
-    if (pw === CFG.ADMIN_PASSWORD) {
-      isAdmin = true;
-      storePassword(pw);
-      closeModal();
-      render();
-    } else {
-      passError.classList.remove('hidden');
-    }
-  }
-
   adminToggle.addEventListener('click', () => {
     if (isAdmin) logout();
     else openModal();
@@ -348,8 +484,7 @@
   el('add-btn').addEventListener('click', addItem);
 
   tryAutoLogin();
-  loadItems();
-})();
+  renderDraftNodes();
 </script>
 </body>
 </html>
