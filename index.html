@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wishlist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @keyframes wl-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  body {
+    min-height: 100vh;
+    font-family: 'Inter Tight', sans-serif;
+    background: radial-gradient(120% 90% at 50% -10%, #2c4f57 0%, #26343d 42%, #221d28 72%, #1b1620 100%);
+    color: #f5f1ea;
+    position: relative;
+    overflow-x: hidden;
+  }
+  .top-bar { position: fixed; top: 28px; right: 32px; z-index: 40; display: flex; gap: 12px; align-items: center; }
+  .admin-badge {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: #c99a86; padding: 6px 12px; border: 1px solid rgba(201,154,134,.32); border-radius: 999px;
+  }
+  .admin-toggle {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .2em; text-transform: uppercase;
+    color: #9c9990; background: rgba(245,241,234,.05); border: 1px solid rgba(156,153,144,.28); border-radius: 999px;
+    padding: 9px 18px; cursor: pointer; backdrop-filter: blur(6px); transition: all .2s;
+  }
+  .admin-toggle:hover { color: #f5f1ea; border-color: rgba(156,153,144,.55); background: rgba(245,241,234,.09); }
+  header { padding: 88px 40px 44px; text-align: center; }
+  h1 {
+    font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 56px; line-height: 1.04;
+    letter-spacing: -.015em; margin: 0 auto; max-width: 16ch; color: #f5f1ea;
+  }
+  h1 em { font-style: italic; color: #d97757; }
+  main { max-width: 600px; margin: 0 auto; padding: 0 40px 40px; }
+  .empty {
+    text-align: center; font-family: 'Instrument Serif', serif; font-style: italic; font-size: 26px;
+    color: #9c9990; padding: 40px 0;
+  }
+  ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  li.item {
+    position: relative; animation: wl-fade .4s ease both; border-top: 1px solid rgba(156,153,144,.14);
+    padding: 16px 44px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px;
+  }
+  .item-name { font-family: 'Instrument Serif', serif; font-size: 22px; line-height: 1.2; letter-spacing: -.01em; color: #f5f1ea; }
+  .item-num { color: #9c9990; font-variant-numeric: tabular-nums; }
+  .item-note { margin: 0; font-family: 'Instrument Serif', serif; font-style: italic; font-size: 16px; line-height: 1.45; color: #a8a49b; max-width: 46ch; }
+  .item-link {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: #c99a86;
+    border-bottom: 1px solid rgba(201,154,134,.35); padding-bottom: 2px; transition: color .2s;
+  }
+  .item-link:hover { color: #e7c3af; }
+  .item-remove {
+    position: absolute; top: 12px; right: 0; font-family: 'JetBrains Mono', monospace; font-size: 15px;
+    color: #9c9990; background: transparent; border: 1px solid rgba(156,153,144,.28); border-radius: 999px;
+    width: 30px; height: 30px; cursor: pointer; line-height: 1; transition: all .2s;
+  }
+  .item-remove:hover { color: #f5f1ea; border-color: #673c4f; background: rgba(103,60,79,.4); }
+  .add-section { margin-top: 20px; border-top: 1px solid rgba(156,153,144,.16); padding-top: 40px; }
+  .add-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: #9c9990; margin-bottom: 22px; }
+  .add-form { display: flex; flex-direction: column; gap: 14px; }
+  .add-form input {
+    font-family: 'Inter Tight', sans-serif; font-size: 16px; color: #f5f1ea; background: rgba(245,241,234,.04);
+    border: 1px solid rgba(156,153,144,.24); border-radius: 12px; padding: 14px 20px; outline: none; transition: border-color .2s;
+  }
+  .add-form input:focus { border-color: rgba(201,154,134,.6); }
+  #f-name { font-family: 'Instrument Serif', serif; font-size: 26px; padding: 16px 20px; }
+  #f-link { font-family: 'JetBrains Mono', monospace; font-size: 14px; padding: 14px 20px; }
+  .add-btn {
+    align-self: flex-start; margin-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    letter-spacing: .2em; text-transform: uppercase; color: #221d28; background: #c99a86; border: none;
+    border-radius: 999px; padding: 14px 30px; cursor: pointer; transition: background .2s;
+  }
+  .add-btn:hover { background: #e7c3af; }
+  .add-btn:disabled { opacity: .5; cursor: default; }
+  footer { text-align: center; padding: 60px 40px 70px; }
+  .count-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: rgba(156,153,144,.55); }
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 60; background: rgba(20,16,24,.72); backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .modal {
+    width: 100%; max-width: 420px; background: linear-gradient(165deg,#2b3b42,#241b28);
+    border: 1px solid rgba(156,153,144,.22); border-radius: 20px; padding: 40px 36px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.5); animation: wl-fade .3s ease both;
+  }
+  .modal-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: #9c9990; margin-bottom: 14px; }
+  .modal h2 { font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 34px; margin: 0 0 24px; color: #f5f1ea; }
+  .modal input {
+    width: 100%; box-sizing: border-box; font-family: 'JetBrains Mono', monospace; font-size: 16px;
+    letter-spacing: .1em; color: #f5f1ea; background: rgba(245,241,234,.05); border: 1px solid rgba(156,153,144,.3);
+    border-radius: 12px; padding: 15px 18px; outline: none; transition: border-color .2s;
+  }
+  .modal input:focus { border-color: rgba(201,154,134,.6); }
+  .modal-error { margin: 12px 2px 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #d98a7a; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 26px; }
+  .modal-unlock {
+    flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .2em; text-transform: uppercase;
+    color: #221d28; background: #c99a86; border: none; border-radius: 999px; padding: 14px; cursor: pointer; transition: background .2s;
+  }
+  .modal-unlock:hover { background: #e7c3af; }
+  .modal-cancel {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: .2em; text-transform: uppercase;
+    color: #9c9990; background: transparent; border: 1px solid rgba(156,153,144,.28); border-radius: 999px; padding: 14px 22px; cursor: pointer;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <span id="admin-badge" class="admin-badge hidden">Admin</span>
+  <button id="admin-toggle" class="admin-toggle">Admin</button>
+</div>
+
+<header>
+  <h1>very cool <em>(and expensive!)</em> stuff that i would like to have</h1>
+</header>
+
+<main>
+  <p id="empty-msg" class="empty hidden">Nothing here yet.</p>
+  <ol id="items-list"></ol>
+
+  <div id="add-section" class="add-section hidden">
+    <div class="add-label">Add an item</div>
+    <div class="add-form">
+      <input id="f-name" placeholder="What do you want?">
+      <input id="f-note" placeholder="Short note / why (optional)">
+      <input id="f-link" placeholder="Link to buy (optional)">
+      <button id="add-btn" class="add-btn">Add to list</button>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div id="count-label" class="count-label">0 items</div>
+</footer>
+
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-label">Admin access</div>
+    <h2>Enter password</h2>
+    <input id="f-pass" type="password" autofocus placeholder="Password">
+    <p id="pass-error" class="modal-error hidden">Incorrect password.</p>
+    <div class="modal-actions">
+      <button id="submit-pass" class="modal-unlock">Unlock</button>
+      <button id="cancel-pass" class="modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function () {
+  const API_URL = window.WISHLIST_API_URL;
+  const ADMIN_KEY = 'wl_admin_pw';
+
+  let items = [];
+  let isAdmin = false;
+
+  const el = (id) => document.getElementById(id);
+  const itemsList = el('items-list');
+  const emptyMsg = el('empty-msg');
+  const addSection = el('add-section');
+  const countLabel = el('count-label');
+  const adminBadge = el('admin-badge');
+  const adminToggle = el('admin-toggle');
+  const modalOverlay = el('modal-overlay');
+  const passInput = el('f-pass');
+  const passError = el('pass-error');
+
+  function getStoredPassword() {
+    try { return sessionStorage.getItem(ADMIN_KEY) || ''; } catch (e) { return ''; }
+  }
+  function storePassword(pw) {
+    try { sessionStorage.setItem(ADMIN_KEY, pw); } catch (e) {}
+  }
+  function clearStoredPassword() {
+    try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
+  }
+
+  async function apiGet() {
+    const res = await fetch(API_URL);
+    return res.json();
+  }
+  async function apiPost(body) {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  }
+
+  function render() {
+    itemsList.innerHTML = '';
+    emptyMsg.classList.toggle('hidden', items.length !== 0);
+    items.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.className = 'item';
+
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'item-name';
+      nameDiv.innerHTML = `<span class="item-num">${i + 1}.</span> `;
+      nameDiv.appendChild(document.createTextNode(item.name));
+      li.appendChild(nameDiv);
+
+      if (item.note) {
+        const noteP = document.createElement('p');
+        noteP.className = 'item-note';
+        noteP.textContent = item.note;
+        li.appendChild(noteP);
+      }
+
+      if (item.link) {
+        const a = document.createElement('a');
+        a.className = 'item-link';
+        a.href = item.link;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'View item ↗';
+        li.appendChild(a);
+      }
+
+      if (isAdmin) {
+        const btn = document.createElement('button');
+        btn.className = 'item-remove';
+        btn.title = 'Remove';
+        btn.textContent = '×';
+        btn.addEventListener('click', () => removeItem(item.id));
+        li.appendChild(btn);
+      }
+
+      itemsList.appendChild(li);
+    });
+
+    countLabel.textContent = items.length === 1 ? '1 item' : items.length + ' items';
+    adminBadge.classList.toggle('hidden', !isAdmin);
+    adminToggle.textContent = isAdmin ? 'Exit admin' : 'Admin';
+    addSection.classList.toggle('hidden', !isAdmin);
+  }
+
+  async function loadItems() {
+    try {
+      const data = await apiGet();
+      if (data.ok) { items = data.items; render(); }
+    } catch (e) {
+      console.error('Failed to load wishlist:', e);
+    }
+  }
+
+  async function removeItem(id) {
+    const pw = getStoredPassword();
+    const data = await apiPost({ action: 'remove', password: pw, id });
+    if (data.ok) { items = data.items; render(); }
+    else if (data.error === 'unauthorized') { logout(); }
+  }
+
+  async function addItem() {
+    const name = el('f-name').value.trim();
+    if (!name) return;
+    const note = el('f-note').value.trim();
+    const link = el('f-link').value.trim();
+    const pw = getStoredPassword();
+    const data = await apiPost({ action: 'add', password: pw, name, note, link });
+    if (data.ok) {
+      items = data.items;
+      el('f-name').value = ''; el('f-note').value = ''; el('f-link').value = '';
+      render();
+    } else if (data.error === 'unauthorized') {
+      logout();
+    }
+  }
+
+  function logout() {
+    isAdmin = false;
+    clearStoredPassword();
+    render();
+  }
+
+  function openModal() {
+    passInput.value = '';
+    passError.classList.add('hidden');
+    modalOverlay.classList.remove('hidden');
+    setTimeout(() => passInput.focus(), 0);
+  }
+  function closeModal() {
+    modalOverlay.classList.add('hidden');
+  }
+
+  async function submitPassword() {
+    const pw = passInput.value;
+    const data = await apiPost({ action: 'login', password: pw });
+    if (data.ok) {
+      isAdmin = true;
+      storePassword(pw);
+      closeModal();
+      render();
+    } else {
+      passError.classList.remove('hidden');
+    }
+  }
+
+  adminToggle.addEventListener('click', () => {
+    if (isAdmin) logout();
+    else openModal();
+  });
+  el('cancel-pass').addEventListener('click', closeModal);
+  el('submit-pass').addEventListener('click', submitPassword);
+  passInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPassword(); });
+  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+  el('add-btn').addEventListener('click', addItem);
+
+  loadItems();
+})();
+</script>
+</body>
+</html>
