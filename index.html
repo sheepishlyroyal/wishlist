@@ -174,13 +174,13 @@
   const passError = el('pass-error');
 
   function getStoredPassword() {
-    try { return sessionStorage.getItem(ADMIN_KEY) || ''; } catch (e) { return ''; }
+    try { return localStorage.getItem(ADMIN_KEY) || ''; } catch (e) { return ''; }
   }
   function storePassword(pw) {
-    try { sessionStorage.setItem(ADMIN_KEY, pw); } catch (e) {}
+    try { localStorage.setItem(ADMIN_KEY, pw); } catch (e) {}
   }
   function clearStoredPassword() {
-    try { sessionStorage.removeItem(ADMIN_KEY); } catch (e) {}
+    try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
   }
 
   async function apiGet() {
@@ -253,6 +253,15 @@
     }
   }
 
+  async function tryAutoLogin() {
+    const pw = getStoredPassword();
+    if (!pw) return;
+    isAdmin = true; // optimistic, avoids re-showing the modal every visit
+    render();
+    const data = await apiPost({ action: 'login', password: pw });
+    if (!data.ok) { logout(); }
+  }
+
   async function removeItem(id) {
     const pw = getStoredPassword();
     const data = await apiPost({ action: 'remove', password: pw, id });
@@ -316,6 +325,7 @@
   el('add-btn').addEventListener('click', addItem);
 
   loadItems();
+  tryAutoLogin();
 })();
 </script>
 </body>
