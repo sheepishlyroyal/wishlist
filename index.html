@@ -156,8 +156,10 @@
 <script src="config.js"></script>
 <script>
 (function () {
-  const API_URL = window.WISHLIST_API_URL;
+  const CFG = window.WISHLIST_CONFIG;
   const ADMIN_KEY = 'wl_admin_pw';
+  const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${CFG.SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(CFG.SHEET_TAB)}`;
+  const FORM_URL = `https://docs.google.com/forms/d/e/${CFG.FORM_ID}/formResponse`;
 
   let items = [];
   let isAdmin = false;
@@ -183,17 +185,43 @@
     try { localStorage.removeItem(ADMIN_KEY); } catch (e) {}
   }
 
-  async function apiGet() {
-    const res = await fetch(API_URL);
-    return res.json();
-  }
-  async function apiPost(body) {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(body),
+  // Reads: the Form's linked Sheet, exposed read-only via its gviz JSON feed
+  // (works once the Sheet is shared "Anyone with the link can view" — no API key).
+  // Writes: POST straight to the Form's response endpoint (no-cors, no auth) —
+  // every add/remove just appends a new event row. Current state = replaying
+  // the whole event log in order. No server of our own anywhere.
+  async function fetchEvents() {
+    const res = await fetch(GVIZ_URL);
+    const text = await res.text();
+    const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
+    const rows = json.table.rows || [];
+    // Column order: Timestamp, Action, Item ID, Name, Note, Link (as added to the Form).
+    return rows.map(r => {
+      const c = r.c;
+      const v = (i) => (c[i] && c[i].v != null) ? String(c[i].v) : '';
+      return { action: v(1), id: v(2), name: v(3), note: v(4), link: v(5) };
     });
-    return res.json();
+  }
+
+  function replay(events) {
+    const state = new Map();
+    for (const e of events) {
+      if (e.action === 'add' && e.id) state.set(e.id, { id: e.id, name: e.name, note: e.note, link: e.link });
+      else if (e.action === 'remove' && e.id) state.delete(e.id);
+    }
+    return [...state.values()];
+  }
+
+  async function submitEvent({ action, id, name = '', note = '', link = '' }) {
+    const body = new URLSearchParams();
+    body.set(`entry.${CFG.ENTRY_ACTION}`, action);
+    body.set(`entry.${CFG.ENTRY_ITEM_ID}`, id);
+    body.set(`entry.${CFG.ENTRY_NAME}`, name);
+    body.set(`entry.${CFG.ENTRY_NOTE}`, note);
+    body.set(`entry.${CFG.ENTRY_LINK}`, link);
+    // no-cors: Google Forms doesn't send CORS headers, so the response is opaque —
+    // this still reliably submits, we just can't read a result back.
+    await fetch(FORM_URL, { method: 'POST', mode: 'no-cors', body });
   }
 
   function render() {
@@ -246,27 +274,26 @@
 
   async function loadItems() {
     try {
-      const data = await apiGet();
-      if (data.ok) { items = data.items; render(); }
+      const events = await fetchEvents();
+      items = replay(events);
+      render();
     } catch (e) {
       console.error('Failed to load wishlist:', e);
     }
   }
 
-  async function tryAutoLogin() {
-    const pw = getStoredPassword();
-    if (!pw) return;
-    isAdmin = true; // optimistic, avoids re-showing the modal every visit
-    render();
-    const data = await apiPost({ action: 'login', password: pw });
-    if (!data.ok) { logout(); }
+  function tryAutoLogin() {
+    // Purely a local convenience flag — there's no server to verify against,
+    // so this is UI-only, matching "this site doesn't need to be secure".
+    if (getStoredPassword() === CFG.ADMIN_PASSWORD) { isAdmin = true; render(); }
   }
 
   async function removeItem(id) {
-    const pw = getStoredPassword();
-    const data = await apiPost({ action: 'remove', password: pw, id });
-    if (data.ok) { items = data.items; render(); }
-    else if (data.error === 'unauthorized') { logout(); }
+    // Optimistic: drop it locally right away, then log the removal event.
+    items = items.filter(x => x.id !== id);
+    render();
+    await submitEvent({ action: 'remove', id });
+    loadItems(); // reconcile with the log in case of concurrent edits
   }
 
   async function addItem() {
@@ -274,15 +301,12 @@
     if (!name) return;
     const note = el('f-note').value.trim();
     const link = el('f-link').value.trim();
-    const pw = getStoredPassword();
-    const data = await apiPost({ action: 'add', password: pw, name, note, link });
-    if (data.ok) {
-      items = data.items;
-      el('f-name').value = ''; el('f-note').value = ''; el('f-link').value = '';
-      render();
-    } else if (data.error === 'unauthorized') {
-      logout();
-    }
+    const id = String(Date.now());
+    items = [...items, { id, name, note, link }];
+    el('f-name').value = ''; el('f-note').value = ''; el('f-link').value = '';
+    render();
+    await submitEvent({ action: 'add', id, name, note, link });
+    loadItems();
   }
 
   function logout() {
@@ -301,10 +325,9 @@
     modalOverlay.classList.add('hidden');
   }
 
-  async function submitPassword() {
+  function submitPassword() {
     const pw = passInput.value;
-    const data = await apiPost({ action: 'login', password: pw });
-    if (data.ok) {
+    if (pw === CFG.ADMIN_PASSWORD) {
       isAdmin = true;
       storePassword(pw);
       closeModal();
@@ -324,8 +347,8 @@
   modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
   el('add-btn').addEventListener('click', addItem);
 
-  loadItems();
   tryAutoLogin();
+  loadItems();
 })();
 </script>
 </body>
